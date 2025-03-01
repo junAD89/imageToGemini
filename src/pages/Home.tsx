@@ -1,4 +1,4 @@
-import { IonButton, IonContent, IonHeader, IonPage, IonTitle, IonToolbar } from '@ionic/react';
+import { IonButton, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonCard, IonCardContent } from '@ionic/react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { useState } from 'react';
 import './Home.css';
@@ -7,6 +7,7 @@ const Home: React.FC = () => {
   const [imageUrl, setImageUrl] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [imageType, setImageType] = useState(''); // Pour stocker et afficher le type MIME
+  const [imageDescription, setImageDescription] = useState(''); // Pour stocker la description de l'image
 
   // Fonction pour prendre une photo
   const takePicture = async () => {
@@ -24,17 +25,14 @@ const Home: React.FC = () => {
       console.log("Chaîne base64 obtenue :", imageBase64.slice(0, 50) + "..."); // Affiche les 50 premiers caractères
 
       if (imageBase64) {
-        // Extraction du header (type MIME) de la chaîne base64
-        if (imageBase64.includes(';')) {
-          const base64Header = imageBase64.split(';')[0];
-          console.log("Header extrait :", base64Header);
-          setImageType(base64Header);
-        } else {
-          console.log("Pas de header trouvé, utilisation du type par défaut image/jpeg");
-          setImageType('image/jpeg'); // Par défaut si aucun header n'est trouvé
-        }
+        // Définir le type MIME en fonction du format renvoyé par Camera.getPhoto
+        const mimeType = image.format ? `image/${image.format.toLowerCase()}` : 'image/jpeg';
+        console.log("Type MIME détecté :", mimeType);
+        setImageType(mimeType);
         setImageUrl(imageBase64);
         setErrorMessage('');
+        // Réinitialiser la description lorsqu'une nouvelle image est prise
+        setImageDescription('');
         console.log("Image et type MIME mis à jour");
       } else {
         console.log("Aucune image capturée");
@@ -54,11 +52,12 @@ const Home: React.FC = () => {
         setErrorMessage("Aucune image à uploader.");
         return;
       }
-      // Extraction de la partie base64 sans le préfixe
-      const base64ImageData = imageUrl.includes(',')
-        ? imageUrl.split(',')[1] // Enlever 'data:image/...;base64,' si présent
-        : imageUrl;
-      console.log("Données base64 extraites (premiers 30 caractères) :", base64ImageData.slice(0, 30) + " ...");
+
+      // S'assurer que l'image a le préfixe MIME correct
+      const formattedImageData = `data:${imageType};base64,${imageUrl}`;
+      console.log("Données image formatées avec préfixe MIME :", formattedImageData.slice(0, 50) + "...");
+
+      setErrorMessage("Envoi en cours...");
 
       const response = await fetch('https://chat-to-detectcruch-api.glitch.me/upload', {
         method: 'POST',
@@ -66,7 +65,7 @@ const Home: React.FC = () => {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: JSON.stringify({ imageBase64: base64ImageData }),
+        body: JSON.stringify({ imageBase64: formattedImageData }),
       });
       console.log("Réponse HTTP reçue");
 
@@ -77,7 +76,12 @@ const Home: React.FC = () => {
         setErrorMessage(data.error);
       } else {
         console.log("Upload réussi");
-        setErrorMessage("Image envoyée avec succès!");
+        setErrorMessage("Image analysée avec succès !");
+        // Stocker la description retournée par l'API
+        if (data.description) {
+          setImageDescription(data.description);
+          console.log("Description reçue de l'API :", data.description);
+        }
       }
     } catch (err: any) {
       console.error("Erreur lors de l'upload de l'image :", err);
@@ -100,6 +104,19 @@ const Home: React.FC = () => {
     }
   };
 
+  // Fonction pour copier la description dans le presse-papiers
+  const copyDescriptionToClipboard = async () => {
+    try {
+      if (imageDescription) {
+        await navigator.clipboard.writeText(imageDescription);
+        setErrorMessage("Description copiée dans le presse-papiers!");
+      }
+    } catch (err) {
+      console.error("Erreur lors de la copie de la description :", err);
+      setErrorMessage("Échec de la copie dans le presse-papiers.");
+    }
+  };
+
   const isLoggin = true;
 
   return (
@@ -117,7 +134,7 @@ const Home: React.FC = () => {
         {/* Affichage de l'image capturée */}
         {imageUrl && imageType && (
           <img
-            src={`data:${imageType};base64,${imageUrl.includes(',') ? imageUrl.split(',')[1] : imageUrl}`}
+            src={`data:${imageType};base64,${imageUrl}`}
             alt="Captured"
           />
         )}
@@ -132,6 +149,19 @@ const Home: React.FC = () => {
             <p>Type MIME de l'image: {imageType}</p>
             <IonButton onClick={copyToClipboard}>Copy MIME Type</IonButton>
           </div>
+        )}
+
+        {/* Affichage de la description de l'image */}
+        {imageDescription && (
+          <IonCard>
+            <IonCardContent>
+              <h2>Description de l'image :</h2>
+              <p>{imageDescription}</p>
+              <IonButton onClick={copyDescriptionToClipboard}>
+                Copier la description
+              </IonButton>
+            </IonCardContent>
+          </IonCard>
         )}
       </IonContent>
     </IonPage>
